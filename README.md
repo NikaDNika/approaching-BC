@@ -1,153 +1,115 @@
-# Deep Reactive Policy (DRP) for Mobile Manipulation
+# Approaching Behaviour Clone
 
-An unofficial implementation and extension of the Deep Reactive Policy (DRP) framework for mobile manipulator planning in dynamic environments. This project integrates MuJoCo physics simulation, cuRobo motion planning, and transformer-based policy learning (IMPACT).
+## 1. Introduction
 
-![Project Structure](https://img.shields.io/badge/Project-DRP_Full-blue) ![License](https://img.shields.io/badge/License-MIT-green)
+本项目实现了一个基于 Transformer 的 7 自由度机械臂（Franka Panda + Mobile Base）行为克隆（BC）系统。
+项目包含大规模专家数据生成、Transformer 策略预训练
 
-## 📂 Project Structure
 
-```text
-DRP_FULL/
-├── checkpoints/            # Trained model weights & configs
-├── configs/                # XML configurations for robot & scenes
-│   ├── mobile_panda.xml    # Robot definition (Mobile Base + Franka Emika Panda)
-│   └── ...                 # Scene definitions
-├── dataset_v2/             # Generated dataset (RGB-D + PointCloud + Trajectory)
-├── mujoco_menagerie/       # Third-party robot assets
-├── src/                    # Source code
-│   ├── data/               # Data collection & loading
-│   │   ├── collector.py    # Main script for data generation
-│   │   └── dataset.py      # PyTorch Dataset
-│   ├── env/                # MuJoCo environment wrappers
-│   │   ├── mujoco_env.py   # Simulation & Rendering
-│   │   └── scene_generator.py # Procedural scene generation
-│   ├── evaluation/         # Evaluation scripts
-│   │   └── evaluate_drp.py # Closed-loop policy rollout
-│   ├── models/             # Neural Networks
-│   │   ├── impact.py       # IMPACT Policy (Transformer)
-│   │   └── modules.py      # PointNet++ Encoder
-│   ├── planning/           # Motion Planning (Oracle)
-│   │   └── planner.py      # NVIDIA cuRobo wrapper
-│   ├── training/           # Training scripts
-│   │   └── train_bc.py     # Behavior Cloning training
-│   └── utils/              # Utilities
-└── tools/                  # Helper scripts (visualization, debugging)
-    ├── replay.py           # Replay generated data
-    ├── check_data.py       # Inspect npz files
-    └── tune_camera.py      # Camera pose adjustment tool
+
+## 2. Requirements
+
+### 操作系统及软硬件版本配置要求
+
+**OS:** Ubuntu 22.04
+
+**GPU:** NVIDIA RTX 4090
+
+**CUDA:** 11.8/12.1
+
+### 环境安装
+
+#### 方式一：Conda（推荐）
+
+首先查看项目中的enviroment.yml，替换“<your_conda_env_name>为您想创建的虚拟环境名字，保存。
+然后cd到项目根目录，在终端执行
+
+```
+conda env create -f enviroment.yml
+conda activate <your_conda_env_name>
 ```
 
----
+#### 方式二：Pip
 
-## 🛠️ Installation
+或者用您自己的虚拟环境，执行
 
-### 1. Prerequisites
-*   Ubuntu 20.04+
-*   Python 3.8+
-*   NVIDIA GPU (RTX 3070+ recommended) with CUDA 11.8+
-*   [MuJoCo 2.3.7+](https://github.com/google-deepmind/mujoco)
-
-### 2. Setup Environment
-```bash
-# Create conda environment
-conda create -n drp python=3.10
-conda activate drp
-
-# Install PyTorch (adjust cuda version accordingly)
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-
-# Install dependencies
-pip install mujoco opencv-python scipy pyyaml tqdm matplotlib
-
-# Install NVIDIA cuRobo (Follow official instructions)
-# https://curobo.org/get_started/1_install_instructions.html
-pip install curobo
+```
+pip install -r requirements.txt --extra-index-url https://pypi.nvidia.com
 ```
 
-### 3. Install Source Package
-Run this from the project root to enable absolute imports:
-```bash
-pip install -e .
+
+
+## 3. 快速开始
+
+### 查看仿真场景
+
+注意在configs/xx.xml中修改路径
+
+```
+simulate configs/fixed_scene_living_room.xml
+simulate configs/fixed_scene_kitchen.xml
+simulate configs/fixed_scene_storage.xml
+simulate configs/fixed_scene_corner.xml
 ```
 
----
+### 查看目标生成区域
 
-## 🚀 Usage Guide
+待抓取物体与放置位置的生成位置用同一套集合
 
-### 1. Data Collection (Generation)
-Generate expert trajectories using cuRobo planner in procedurally generated scenes (Living Room, Kitchen, Storage, Corner).
+```
+python -m tools.viz_target_distribution
+```
 
-```bash
-# Run data collector (Multi-process by default)
-# Ensure you have set MUJOCO_GL=egl if running on headless server
+关闭仿真窗口会依次展示四个场景的目标生成区域，默认200个采样点。
+
+如需修改目标生成区域，可在 **src/env/scene_generator.py** 中修改对应场景的sampling_regions.append()方法中的参数。
+
+### 数据采集
+
+使用cuRobo规划期生成专家演示数据
+
+```
 python -m src.data.collector
 ```
-*   **Output**: Data will be saved to `dataset_v2/`.
-*   **Features**: Dynamic base placement, multi-pose grasping attempt, RGB-D rendering, and point cloud fusion.
 
-### 2. Data Inspection
-Verify the generated data before training.
+可视化最新采集的数据
 
-```bash
-# Replay 3D trajectory in MuJoCo viewer
-python tools/replay.py --scene living_room
-
-# Inspect RGB-D images and Point Clouds
-python tools/check_data.py
+```
+python -m tools.replay
 ```
 
-### 3. Training (Behavior Cloning)
-Train the IMPACT policy (PointNet++ Encoder + Transformer Decoder).
+### 策略预训练
 
-```bash
-# Run training script
-python -m src.training.train_bc
+用行为克隆训练基础的Transformer策略，学习“抓取与放置”任务
+
 ```
-*   **Checkpoints**: Saved to `checkpoints/drp_bc_baseline_{timestamp}/`.
-*   **Config**: Hyperparameters are saved in `config.yaml`.
-
-### 4. Evaluation
-Evaluate the trained policy in a closed-loop simulation.
-
-```bash
-# Evaluate the best model from the latest experiment
-python -m src.evaluation.evaluate_drp
+python -m src.training.train_bc_with_ar_transfoermer_multistep
 ```
-*   The robot will attempt to reach the target (green sphere) using only point cloud observations.
-*   **Obstacle Avoidance**: The policy should reactively avoid obstacles.
 
----
+训练完成后将在 checkpoints/ 下生成 bc_with_ar_transformer_multistep_xxxx_xxx 文件夹，其中的 .pth 即为训练好的模型文件。
 
-## 🔧 Configuration & Tuning
+可视化训练好的模型
 
-### Robot & Scene
-*   **Robot XML**: `configs/mobile_panda.xml`. Modify this to change camera positions or robot physics.
-*   **Scene Generation**: `src/env/scene_generator.py`. Adjust furniture layout and target sampling regions here.
-
-### Cameras
-To adjust camera viewpoints (Top, Side, Wrist):
-1.  Edit `<camera>` tags in `configs/mobile_panda.xml`.
-2.  Run visualization tool to verify:
-    ```bash
-    python tools/tune_camera.py
-    ```
-    Press `r` in the window to reload XML changes instantly.
-
-### Planning (Oracle)
-*   **Planner Config**: `src/planning/planner.py`.
-*   **Grasp Offset**: `src/data/collector.py`. Adjust `real_target_world` calculation if the robot stops too far/close to the object.
-
----
-
-## 📝 Notes
-*   **Rendering Backend**: On Linux, ensure `export MUJOCO_GL=egl` is set to avoid OpenGL context conflicts during multi-process data collection.
-*   **Coordinate Systems**:
-    *   **World Frame**: Global MuJoCo world.
-    *   **Base Frame (Link0)**: Robot base. Point clouds and actions are normalized to this frame.
-*   **Gripper**: Currently disabled (visual only) to ensure simulation stability.
-
-## 🤝 Acknowledgements
-*   [Deep Reactive Policy (DRP)](https://arxiv.org/abs/xxxx)
-*   [NVIDIA cuRobo](https://curobo.org/)
-*   [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie)
 ```
+python -m tools.rollout_closedloop_bc_with_ar_from_npz \
+  --data-dir /media/j16/8deb00a4-cceb-e842-a899-55532424da473/dataset_v2 \
+  --scenario living_room \
+  --policy-ckpt checkpoints/bc_with_ar_transformer_multistep_xxx/best_model.pth \
+  --num-points 2048 \
+  --max-steps 300 \
+  --device cuda \
+  --control-dt 0.05
+```
+
+### 在线微调
+
+加载预训练权重，开启“上帝视角”教师进行避障特训。
+
+注意修改 src/training/main_finetune.py 中的 CKPT_PATH 为你自己的模型
+
+```
+python -m src.training.main_finetune
+```
+
+可视化仍可用 tools/rollout_closedloop_bc_with_ar_from_npz.py
+
