@@ -1,0 +1,28 @@
+# --- Core Learning ---
+torch==2.5.1 --index-url https://download.pytorch.org/whl/cu121
+torchvision==0.20.1 --index-url https://download.pytorch.org/whl/cu121
+tensorboard>=2.20.0
+
+# --- Robotics & Simulation ---
+mujoco==3.4.0
+# Note: curobo might need extra index url: https://pypi.nvidia.com
+nvidia-curobo==0.7.7.post1.dev5
+warp-lang==1.11.0
+gymnasium==1.2.3
+stable-baselines3==2.7.1
+
+# --- Geometry & Vision ---
+numpy==2.2.6
+scipy==1.15.3
+open3d==0.19.0
+opencv-python==4.13.0.90
+trimesh==4.11.1
+shapely==2.1.2
+pyquaternion==0.9.9
+
+# --- Utilities ---
+tqdm==4.67.1
+pyyaml==6.0.3
+pandas==2.3.3
+matplotlib==3.10.8
+pillow==12.1.0
